@@ -16,8 +16,9 @@
 using namespace std;
 
 map<string,string> aliasmap;
-
+string prompt = ">>$ ";
 void check_redir(char**);
+int detect_PS1(char*);
 
 void shell_start()
 {
@@ -26,15 +27,14 @@ void shell_start()
 
 int take_input(char* s)//take input command
 { 
-	  string temp; 
+	  string temp;
 	  char* str;
-    cout<<"\n$";
-  	getline(cin,temp);
+    cout<<endl<<prompt;
+    getline(cin,temp);
   	char temp_array[temp.length() + 1];
   	strcpy(temp_array, temp.c_str());
   	temp_array[temp.length()]='\0';
 	  str = temp_array;
-	  //printf("\n%s",str);
 	  if(strlen(str) != 0) 
     {    
         strcpy(s,str); 
@@ -43,7 +43,29 @@ int take_input(char* s)//take input command
     else 
     {    
         return 1; 
-    }    
+    } 
+}       
+
+void display_prompt(char* s)
+{
+    string str1(s);
+    int size = str1.length();
+    int pos = str1.find("=");
+    prompt = ">>" + str1.substr(pos + 2,size-pos-3) + " ";
+}
+
+
+int detect_PS1(char* s)
+{
+   string st;
+   st=(string)s;
+   string temp = st.substr(0,3);
+   if(temp.compare("PS1") == 0)
+   {
+       return 1;
+   } 
+   else
+    return 0;
 }
 int detect_alias(char* s)
 {
@@ -77,9 +99,9 @@ void find_alias(char* s)
 {
     string str1;
     str1 = (string)s;
-    if(aliasmap.find(str1) != aliasmap.end())
+    if(aliasmap.find(str1) != aliasmap.end())//finding any matching entry in map
     {
-        strcpy(s, (char*)aliasmap[str1].c_str());
+        strcpy(s, (char*)aliasmap[str1].c_str() );//convert string ---> const char* --->  char*
     }
 }
 
@@ -103,12 +125,12 @@ void execute_simple_command(char** parsed) // execute simple command without pip
         exit(0); 
     } 
     else 
-    { 
+    {   
         wait(NULL);  
         return; 
     } 
 } 
-void create_file_for_single(char* str)
+void create_file_for_single(char* str)//creating file for single redirection
 {	
 	int fd;
 	fd = open (str, O_WRONLY | O_TRUNC | O_CREAT,0644);
@@ -116,7 +138,7 @@ void create_file_for_single(char* str)
     close(fd);
 }
 
-void create_file_for_double(char* str)
+void create_file_for_double(char* str)//creating file for double redirection
 {	
 	int fd;
 	fd = open (str, O_WRONLY | O_APPEND | O_CREAT,0644);
@@ -242,8 +264,14 @@ int processString(char* s, char** parsed_command, char** parsedpipe)//determine 
   	   //temp = s;
   	   //strncpy(temp, s, sizeof(s));
   	   //write(0, s, sizeof(s)); 
+       flag3 = detect_PS1(s);
        flag2 = detect_alias(s);
   	   flag1 = detect_delimiter(s,'|');
+       if(flag3 ==1 )
+       {
+          display_prompt(s);
+          return 3; 
+       }
        if(flag2 == 1) 
        {
           save_alias(s);
