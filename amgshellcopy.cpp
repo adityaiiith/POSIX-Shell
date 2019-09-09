@@ -9,6 +9,8 @@
 #include<fcntl.h>
 #include<iostream>
 #include<map>
+#include<vector>
+#include<fstream>
 
 #define clear() printf("\033[H\033[J") 
 #define max_length_of_command 1000 
@@ -16,7 +18,11 @@
 using namespace std;
 
 map<string,string> aliasmap;
-string prompt = ">>$ ";
+vector<string> history_buffer;
+
+string prompt = "$ ";
+extern char** environ;
+
 void check_redir(char**);
 int detect_PS1(char*);
 
@@ -25,12 +31,53 @@ void shell_start()
 	clear();
 }
 
+void make_amgrc()//making .bashrc file for my amgshell
+{
+    char  *home,*user,*path,*display,*dbus;
+    char* temp_environ[100]; 
+    char hostname[1024];
+    home = getenv("HOME");
+    user = getenv("USER");
+    path = getenv("PATH");
+    dbus = getenv("DBUS_SESSION_BUS_ADDRESS");
+    display = getenv("DISPLAY");
+    gethostname(hostname,sizeof(hostname));
+    ofstream file;
+    file.open("amgrc");
+    file<<"HOME="<<home<<endl;
+    file<<"USER="<<user<<endl;
+    file<<"PATH="<<path<<endl;
+    file<<"HOSTNAME="<<hostname;
+    //amgrc file created with the required environment variables
+    string temp(home);
+    temp = "HOME=" + temp;
+    temp_environ[0]= (char*)temp.c_str();
+    string temp1(user);
+    temp1 = "USER=" + temp1;
+    temp_environ[1]=(char*)temp1.c_str();
+    string temp2(path);
+    temp2 = "PATH=" + temp2;
+    temp_environ[2]=(char*)temp2.c_str();
+    string temp3(hostname);
+    temp3 = "HOSTNAME=" + temp3;
+    temp_environ[3]=(char*)temp3.c_str();
+    string temp4(dbus);
+    temp4 = "DBUS_SESSION_BUS_ADDRESS=" + temp4;
+    temp_environ[4]=(char*)temp4.c_str();
+    string temp5(display);
+    temp5 = "DISPLAY=" + temp5;
+    temp_environ[5]=(char*)temp5.c_str();
+
+    memcpy(environ,temp_environ,sizeof(temp_environ));
+}
+
 int take_input(char* s)//take input command
 { 
 	  string temp;
 	  char* str;
     cout<<endl<<prompt;
     getline(cin,temp);
+    history_buffer.push_back(temp);
   	char temp_array[temp.length() + 1];
   	strcpy(temp_array, temp.c_str());
   	temp_array[temp.length()]='\0';
@@ -44,16 +91,39 @@ int take_input(char* s)//take input command
     {    
         return 1; 
     } 
-}       
+}      
+int detect_cd(char* s)
+{ 
+    string str1(s),temp = str1.substr(0,2);
+    if(temp.compare("cd") == 0)
+        return 1;
+    else 
+      return 0;
+} 
+
+void execute_cd(char* s)
+{
+    string str1(s);
+    int size = str1.length();
+    string dir =str1.substr(3,size-3);
+    chdir(dir.c_str());
+}
+
+int detect_root()
+{
+    if(!geteuid())
+      return 1;
+    else
+      return 0;
+}
 
 void display_prompt(char* s)
 {
     string str1(s);
     int size = str1.length();
     int pos = str1.find("=");
-    prompt = ">>" + str1.substr(pos + 2,size-pos-3) + " ";
+    prompt = str1.substr(pos + 2,size-pos-3) + " ";
 }
-
 
 int detect_PS1(char* s)
 {
@@ -132,17 +202,17 @@ void execute_simple_command(char** parsed) // execute simple command without pip
 } 
 void create_file_for_single(char* str)//creating file for single redirection
 {	
-	int fd;
-	fd = open (str, O_WRONLY | O_TRUNC | O_CREAT,0644);
-	dup2 (fd,1);
+  	int fd;
+  	fd = open (str, O_WRONLY | O_TRUNC | O_CREAT,0644);
+  	dup2 (fd,1);
     close(fd);
 }
 
 void create_file_for_double(char* str)//creating file for double redirection
 {	
-	int fd;
-	fd = open (str, O_WRONLY | O_APPEND | O_CREAT,0644);
-	dup2 (fd,1);
+  	int fd;
+  	fd = open (str, O_WRONLY | O_APPEND | O_CREAT,0644);
+  	dup2 (fd,1);
     close(fd);
 }
 void check_redir(char** parsed)
@@ -174,6 +244,23 @@ void check_redir(char** parsed)
 			create_file_for_double(parsed[i+1]);
 		}
 
+}
+
+int detect_history(char *s)
+{
+    string str(s);
+    if(str.compare("history") == 0)
+      return 1;
+    else
+      return 0;
+}
+
+void show_history()
+{
+    for(int i = 0 ; i < history_buffer.size() ; i++)
+    {
+        cout<<"\n"<<i+1<<" "<<history_buffer[i];
+    }
 }
 
 void parse(char* s, char** parsed_command, const char* delimiter) // delimit the command using space or |
@@ -258,15 +345,27 @@ int processString(char* s, char** parsed_command, char** parsedpipe)//determine 
 { 
 
   	   //cout<<"INSIDE PROCESSSTRING";
-  	   int flag1,flag2,flag3;
+  	   int flag1,flag2,flag3,flag4,flag5;
   	   char* temp;
   	   //strcpy(temp,s);
   	   //temp = s;
   	   //strncpy(temp, s, sizeof(s));
   	   //write(0, s, sizeof(s)); 
+       flag5 = detect_history(s);
+       flag4 = detect_cd(s);
        flag3 = detect_PS1(s);
        flag2 = detect_alias(s);
   	   flag1 = detect_delimiter(s,'|');
+       if(flag5 == 1)
+       {
+          show_history();
+          return 5;
+       }
+       if(flag4 == 1)
+       {
+          execute_cd(s);
+          return 4;
+       }
        if(flag3 ==1 )
        {
           display_prompt(s);
@@ -290,13 +389,13 @@ int processString(char* s, char** parsed_command, char** parsedpipe)//determine 
        
 } 
 
-  
 int main() 
 { 
 
+    make_amgrc();
     char input[max_length_of_command], *simplearg[max_commands]; 
     char* pipedarg[max_commands]; 
-    int execFlag; 
+    int mainflag; 
     shell_start(); 
     //cout <<endl<<getenv("PATH");
   	while(1) 
@@ -305,20 +404,19 @@ int main()
             continue;
 
         find_alias(input);
-        execFlag = processString(input, simplearg, pipedarg); 
+        mainflag = processString(input, simplearg, pipedarg); 
         
-        if (execFlag == 0) 
+        if (mainflag == 0) 
         {
-        	//cout<<"\nSIMPLECOMMANDENCOUNTERED";
+        	  //cout<<"\nSIMPLECOMMANDENCOUNTERED";
             execute_simple_command(simplearg); 
         }
   		
-  		if (execFlag == 1) //execute_misc_command
-  		{
-  			//cout<<"\nPIPEDCOMMANDENCOUNTERED";
-            execute_piped_command(pipedarg);
-
-  		}
+    		if (mainflag == 1) 
+    		{
+    			    //cout<<"\nPIPEDCOMMANDENCOUNTERED";
+              execute_piped_command(pipedarg);
+        }
     } 
     return 0; 
 } 
